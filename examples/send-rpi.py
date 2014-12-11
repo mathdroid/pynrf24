@@ -5,11 +5,9 @@
 #
 
 
-import RPi.GPIO as GPIO
-GPIO.setmode(GPIO.BCM)
+
 from nrf24 import NRF24
 import time
-import spidev
 
 
 
