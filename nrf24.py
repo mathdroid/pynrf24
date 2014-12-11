@@ -27,8 +27,10 @@
 try:
     # For Raspberry Pi
     import RPi.GPIO as GPIO
+    GPIO.setmode(GPIO.BCM)
+    GPIO.setwarnings(False)
 except ImportError:
-    raise ImportError('Neither RPi.GPIO nor Adafruit_BBIO.GPIO module found.')
+    raise ImportError('RPi.GPIO module not found.')
 
 
 import spidev
@@ -180,8 +182,8 @@ class NRF24:
     child_pipe_enable = [ERX_P0, ERX_P1, ERX_P2, ERX_P3, ERX_P4, ERX_P5]
 
     def __init__(self):
-        self.ce_pin = "P9_15"
-        self.irq_pin = "P9_16"
+        self.ce_pin = 17
+        #self.irq_pin = "P9_16"
         self.channel = 76
         self.data_rate = NRF24.BR_1MBPS
         self.data_rate_bits = 1000
@@ -201,21 +203,21 @@ class NRF24:
             GPIO.output(self.ce_pin, GPIO.LOW)
         return
 
-    def irqWait(self, timeout = 30000):
-        # CHANGE: detect module name because wait_for_edge is not available in
-        # other libraries
-        if not self.using_adafruit_bbio_gpio:
-            raise Exception("IRQ Wait only available on the BBB")
-
-        # TODO: A race condition may occur here.
-        if GPIO.input(self.irq_pin) == 0:  # Pin is already down. Packet is waiting?
-            return True
-
-        #HACK to detect GPIO lib type
-        if GPIO.wait_for_edge.func_code.co_argcount == 4:
-            return GPIO.wait_for_edge(self.irq_pin, GPIO.FALLING, timeout) == 1
-        else:
-            return GPIO.wait_for_edge(self.irq_pin, GPIO.FALLING) == 1
+    # def irqWait(self, timeout = 30000):
+    #     # CHANGE: detect module name because wait_for_edge is not available in
+    #     # other libraries
+    #     if not self.using_adafruit_bbio_gpio:
+    #         raise Exception("IRQ Wait only available on the BBB")
+    #
+    #     # TODO: A race condition may occur here.
+    #     if GPIO.input(self.irq_pin) == 0:  # Pin is already down. Packet is waiting?
+    #         return True
+    #
+    #     #HACK to detect GPIO lib type
+    #     if GPIO.wait_for_edge.func_code.co_argcount == 4:
+    #         return GPIO.wait_for_edge(self.irq_pin, GPIO.FALLING, timeout) == 1
+    #     else:
+    #         return GPIO.wait_for_edge(self.irq_pin, GPIO.FALLING) == 1
 
     def read_register(self, reg, blen=1):
         buf = [NRF24.R_REGISTER | (NRF24.REGISTER_MASK & reg)]
@@ -318,12 +320,7 @@ class NRF24:
         self.print_single_status_line("STATUS", status_str)
 
     def print_observe_tx(self, value):
-        tx_str = "OBSERVE_TX=0x{0:02x}: POLS_CNT={2:x} ARC_CNT={2:x}\r\n".format(
-            value,
-            (value >> NRF24.PLOS_CNT) & int("1111", 2),
-            (value >> NRF24.ARC_CNT) & int("1111", 2))
-
-        print(tx_str)
+        print "Observe Tx: %02x  Lost Pkts: %d Retries: %d" % (value, value >> NRF24.PLOS_CNT, value & 15)
 
     def print_byte_register(self, name, reg, qty=1):
         registers = ["0x{:0>2x}".format(self.read_register(reg+r)) for r in range(0, qty)]
@@ -368,15 +365,15 @@ class NRF24:
         self.print_single_status_line("CRC Length", NRF24.crclength_e_str_P[self.getCRCLength()])
         self.print_single_status_line("PA Power", NRF24.pa_dbm_e_str_P[self.getPALevel()])
 
-    def begin(self, major, minor, ce_pin, irq_pin):
+    def begin(self, major, minor, ce_pin):
         # Initialize SPI bus
         self.spidev = spidev.SpiDev()
         self.spidev.open(major, minor)
         self.ce_pin = ce_pin
-        self.irq_pin = irq_pin
+        #self.irq_pin = irq_pin
 
         GPIO.setup(self.ce_pin, GPIO.OUT)
-        GPIO.setup(self.irq_pin, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+        #PIO.setup(self.irq_pin, GPIO.IN, pull_up_down=GPIO.PUD_UP)
 
         time.sleep(5 / 1000000.0)
 
@@ -472,10 +469,13 @@ class NRF24:
         what = self.whatHappened()
 
         result = what['tx_ok']
+        if what['tx_fail']:
+            self.flush_tx()    # dont fill up the tx fifo
 
         # Handle the ack packet
         if what['rx_ready']:
             self.ack_payload_length = self.getDynamicPayloadSize()
+            self.ack_payload_available = True   # needed for ack-payload
 
         return result
 
@@ -500,7 +500,7 @@ class NRF24:
     def getDynamicPayloadSize(self):
         return self.spidev.xfer2([NRF24.R_RX_PL_WID, NRF24.NOP])[1]
 
-    def available(self, pipe_num=None, irq_wait=False, irq_timeout=30000):
+    def available(self, pipe_num=None):
         if not pipe_num:
             pipe_num = []
 
@@ -511,12 +511,12 @@ class NRF24:
         # doesn't set the RX flag...
         if status & _BV(NRF24.RX_DR) or (status & 0b00001110 != 0b00001110):
             result = True
-        else:
-            if irq_wait:  # Will use IRQ wait
-                if self.irqWait(irq_timeout):  # Do we have a packet?
-                    status = self.get_status()  # Seems like we do!
-                    if status & _BV(NRF24.RX_DR) or (status & 0b00001110 != 0b00001110):
-                        result = True
+        #else:
+        #    if irq_wait:  # Will use IRQ wait
+        #        if self.irqWait(irq_timeout):  # Do we have a packet?
+        #            status = self.get_status()  # Seems like we do!
+        #            if status & _BV(NRF24.RX_DR) or (status & 0b00001110 != 0b00001110):
+        #                result = True
 
         if result:
             # If the caller wants the pipe number, include that
@@ -777,7 +777,8 @@ class NRF24:
         self.write_register(NRF24.SETUP_RETR, (delay & 0xf) << NRF24.ARD | (count & 0xf) << NRF24.ARC)
         self.delay = delay * 0.000250
         self.retries = count
-        self.max_timeout = (self.payload_size / float(self.data_rate_bits) + self.delay) * self.retries
+        #added multiplier '2' to guard against premature timeout
+        self.max_timeout = (self.payload_size / float(self.data_rate_bits) + self.delay) * self.retries * 2
         self.timeout = (self.payload_size / float(self.data_rate_bits) + self.delay)
 
     def getRetries(self):
