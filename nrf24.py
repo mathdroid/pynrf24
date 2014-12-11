@@ -18,15 +18,17 @@
 # Select the most appropriate for you by uncommenting one of the
 # two imports.
 
+#MODIFIED FOR USE IN R PI
+#Muhammad Mustadi
+#11 Des 2014
+#v0.1
+
+
 try:
-    #For BBBB
-    import Adafruit_BBIO.GPIO as GPIO
+    # For Raspberry Pi
+    import RPi.GPIO as GPIO
 except ImportError:
-    try:
-        # For Raspberry Pi
-        import RPi.GPIO as GPIO
-    except ImportError:
-        raise ImportError('Neither RPi.GPIO nor Adafruit_BBIO.GPIO module found.')
+    raise ImportError('Neither RPi.GPIO nor Adafruit_BBIO.GPIO module found.')
 
 
 import spidev
