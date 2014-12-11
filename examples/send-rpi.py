@@ -9,7 +9,10 @@
 import RPi.GPIO as GPIO
 GPIO.setmode(GPIO.BCM)
 from nrf24 import NRF24
+GPIO.setwarnings(False)
+import sys
 import time
+import spidev
 
 
 

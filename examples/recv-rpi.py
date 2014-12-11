@@ -7,8 +7,10 @@
 import RPi.GPIO as GPIO
 GPIO.setmode(GPIO.BCM)
 from nrf24 import NRF24
+GPIO.setwarnings(False)
+import sys
 import time
-
+import spidev
 
 
 pipes = [[0xe7, 0xe7, 0xe7, 0xe7, 0xe7], [0xc2, 0xc2, 0xc2, 0xc2, 0xc2]]
